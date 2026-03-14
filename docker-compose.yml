@@ -1,0 +1,74 @@
+services:
+  # Base de datos compartida (SQL Server 2022)
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sql_server_db
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=Seguridad_2026!
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: [ "CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "Seguridad_2026!", "-C", "-Q", "SELECT 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app-network
+
+  # Sistema de Caching (Redis) - Requerido por reglas de Performance
+  redis:
+    image: redis:alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Versión 1: Aplicación Vulnerable (Flask)
+  v1_vulnerable:
+    build:
+      context: ./v1_vulnerable
+    container_name: web_vulnerable
+    ports:
+      - "5001:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    environment:
+      - SQL_SERVER=db
+      - SQL_USER=sa
+      - SQL_PASSWORD=Seguridad_2026!
+      - SQL_DB=master
+
+  # Versión 2: Aplicación Segura (Flask)
+  v2_segura:
+    build:
+      context: ./v2_segura
+    container_name: web_segura
+    ports:
+      - "5002:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    environment:
+      - SQL_SERVER=db
+      - SQL_USER=sa
+      - SQL_PASSWORD=Seguridad_2026!
+      - SQL_DB=master
+      - REDIS_HOST=redis
+
+networks:
+  app-network:
+    driver: bridge
